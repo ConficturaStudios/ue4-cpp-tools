@@ -1,0 +1,43 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.0.1",
+	"FriendlyName": "C++ Tools",
+	"Description": "A plugin that adds additional utilities for working with c++ in the editor.",
+	"Category": "Confictura.Editor",
+	"CreatedBy": "Confictura Studios",
+	"CreatedByURL": "www.conficturastudios.com",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"Installed": true,
+	
+    "Modules" : [
+		{
+			"Name": "CppToolsEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit",
+			"AdditionalDependencies": [
+				"CoreUObject",
+				"UnrealEd",
+				"GameProjectGeneration",
+				"Projects"
+			],
+			"WhitelistPlatforms" :
+			[
+				"Win64",
+				"Win32",
+				"Mac",
+				"Linux",
+				"Android",
+				"AllDesktop",
+				"XboxOne",
+				"PS4",
+				"Switch",
+				"HTML5"
+			]
+		}
+    ]
+}
