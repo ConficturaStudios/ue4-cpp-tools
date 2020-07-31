@@ -1,0 +1,18 @@
+%COPYRIGHT_LINE%
+
+using UnrealBuildTool;
+
+public class %MODULE_NAME% : ModuleRules
+{
+	public %MODULE_NAME%(ReadOnlyTargetRules Target) : base(Target)
+	{
+		// Uncomment if you are using a precompiled header
+		// PCHUsage = PCHUsageMode.%PCH_USAGE%;
+		// PrivatePCHHeaderFile = "Private/%MODULE_NAME%PrivatePCH.h";
+		// bLegacyPublicIncludePaths = Target.bLegacyPublicIncludePaths;
+	
+		PublicDependencyModuleNames.AddRange(new string[] { %PUBLIC_DEPENDENCY_MODULE_NAMES% });
+
+		PrivateDependencyModuleNames.AddRange(new string[] { %PRIVATE_DEPENDENCY_MODULE_NAMES% });
+	}
+}

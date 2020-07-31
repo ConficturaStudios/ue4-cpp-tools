@@ -1,0 +1,19 @@
+%COPYRIGHT_LINE%
+
+#pragma once
+
+#include "Modules/ModuleInterface.h"
+#include "Modules/ModuleManager.h"
+
+%PUBLIC_HEADER_INCLUDES%
+
+DECLARE_LOG_CATEGORY_EXTERN(%MODULE_NAME%Log, Log, All);
+
+class %CLASS_MODULE_API_MACRO%F%MODULE_NAME%Module : public IModuleInterface
+{
+public:
+
+	virtual void StartupModule() override;
+	virtual void ShutdownModule() override;
+
+};

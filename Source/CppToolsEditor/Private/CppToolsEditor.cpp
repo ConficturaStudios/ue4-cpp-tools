@@ -4,7 +4,6 @@
 //#include "Developer/AssetTools/Public/IAssetTools.h"
 //#include "Developer/AssetTools/Public/AssetToolsModule.h"
 
-#include "LevelEditor.h"
 
 #define LOCTEXT_NAMESPACE "CppToolsEditor"
 
@@ -38,7 +37,7 @@ void FCppToolsEditorModule::AddMenuEntry(FMenuBuilder& MenuBuilder) {
             FText::FromString("New C++ Module..."),
             FText::FromString("Create a new C++ Module"),
             FSlateIcon(),
-            FUIAction(FExecuteAction::CreateRaw(this, &FCppToolsEditorModule::NewCppModule))
+            FUIAction(FExecuteAction::CreateRaw(this, &FCppToolsEditorModule::OnNewCppModule))
         );
         MenuBuilder.AddMenuEntry(
             FText::FromString("Restart Editor"),
@@ -61,21 +60,50 @@ void FCppToolsEditorModule::FillSubmenu(FMenuBuilder& MenuBuilder) {
         FText::FromString("New Cpp Module..."),
         FText::FromString("New Cpp Module Tooltip"),
         FSlateIcon(),
-        FUIAction(FExecuteAction::CreateRaw(this, &FCppToolsEditorModule::NewCppModule))
+        FUIAction(FExecuteAction::CreateRaw(this, &FCppToolsEditorModule::OnNewCppModule))
     );
 }
 
-void FCppToolsEditorModule::NewCppModule() {
+void FCppToolsEditorModule::OnNewCppModule() {
     UE_LOG(CppToolsLog, Log, TEXT("Test add new cpp module!"));
-}
+    CreateModuleWindow = SNew(SWindow)
+        .Title(NSLOCTEXT("CreateNewModule", "WindowTitle", "Create New C++ Module"))
+        .ClientSize(FVector2D(750, 350))
+        .SizingRule(ESizingRule::FixedSize)
+        .SupportsMinimize(false).SupportsMaximize(false);
 
-void FCppToolsEditorModule::NewCppPlugin() {
-    UE_LOG(CppToolsLog, Log, TEXT("Test add new cpp plugin!"));
+    OnCreateModuleDelegate.BindRaw(this, &FCppToolsEditorModule::CreateNewModule);
+
+    TSharedRef<SCreateModuleDialog> CreateModuleDialog = SNew(SCreateModuleDialog).OnCreateModule(OnCreateModuleDelegate);
+    CreateModuleWindow->SetContent(CreateModuleDialog);
+
+    TSharedPtr<SWindow> ParentWindow;
+    if (FModuleManager::Get().IsModuleLoaded("MainFrame")) {
+        IMainFrameModule& MainFrame = FModuleManager::GetModuleChecked<IMainFrameModule>("MainFrame");
+        ParentWindow = MainFrame.GetParentWindow();
+    }
+
+    bool modal = false;
+    if (modal) {
+        FSlateApplication::Get().AddModalWindow(CreateModuleWindow.ToSharedRef(), ParentWindow);
+    }
+    else if (ParentWindow.IsValid()) {
+        FSlateApplication::Get().AddWindowAsNativeChild(CreateModuleWindow.ToSharedRef(), ParentWindow.ToSharedRef());
+    }
+    else {
+        FSlateApplication::Get().AddWindow(CreateModuleWindow.ToSharedRef());
+    }
+    CreateModuleWindow->ShowWindow();
+
 }
 
 void FCppToolsEditorModule::RestartEditor() {
     UE_LOG(CppToolsLog, Log, TEXT("Restarting editor..."));
     FUnrealEdMisc::Get().RestartEditor(false);
+}
+
+void FCppToolsEditorModule::CreateNewModule(FString Name, FCreateModuleTarget Target, EHostType::Type Type) {
+    UE_LOG(CppToolsLog, Log, TEXT("Creating module..."));
 }
 
 IMPLEMENT_MODULE(FCppToolsEditorModule, CppToolsEditor)

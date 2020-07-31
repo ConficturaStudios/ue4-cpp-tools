@@ -1,0 +1,20 @@
+%COPYRIGHT_LINE%
+
+#include "%MODULE_NAME%.h"
+// #include "%MODULE_NAME%PrivatePCH.h"
+
+#define LOCTEXT_NAMESPACE "%MODULE_NAME%"
+DEFINE_LOG_CATEGORY(%MODULE_NAME%Log)
+
+
+void F%MODULE_NAME%Module::StartupModule() {
+	%MODULE_STARTUP_CODE%
+}
+
+void F%MODULE_NAME%Module::ShutdownModule() {
+	%MODULE_SHUTDOWN_CODE%
+}
+
+IMPLEMENT_MODULE(F%MODULE_NAME%Module, %MODULE_NAME%);
+
+#undef LOCTEXT_NAMESPACE

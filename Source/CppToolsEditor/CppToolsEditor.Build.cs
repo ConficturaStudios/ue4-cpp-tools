@@ -11,7 +11,8 @@ public class CppToolsEditor : ModuleRules
 
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "AssetTools", "ApplicationCore" });
 
-        PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "UnrealEd", "GameProjectGeneration", "LevelEditor", "Projects" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "UnrealEd", "GameProjectGeneration", "LevelEditor",
+            "Projects", "MainFrame", "AppFramework", "EditorStyle" , "EngineSettings", "SourceControl", "DesktopPlatform" });
       
     }
 }
