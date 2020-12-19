@@ -466,7 +466,7 @@ void SCreateModuleDialog::UpdateInputValidity() {
         bLastInputValidityCheckSuccessful = false;
         FFormatNamedArguments Args;
         Args.Add(TEXT("ModuleName"), FText::FromString(ModuleName));
-        LastInputValidityErrorText = FText::Format(LOCTEXT("ModuleNameWarning", "Module '{ModuleName}' already exists"), Args);
+        LastInputValidityErrorText = FText::Format(LOCTEXT("ModuleNameWarning", "Module '{ModuleName}' already exists. If this module was manually deleted, clean and rebuild the project."), Args);
         return;
     }
 
