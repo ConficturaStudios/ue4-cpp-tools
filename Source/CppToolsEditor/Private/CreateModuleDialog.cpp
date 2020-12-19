@@ -327,7 +327,7 @@ void SCreateModuleDialog::FinishClicked() {
             , FText::FromString(ModuleName), FText::FromString(ModuleName), OutFailReason);
         if (FMessageDialog::Open(EAppMsgType::YesNo, Message) == EAppReturnType::Yes)
         {
-            FGlobalTabmanager::Get()->InvokeTab(FName("OutputLog"));
+            FGlobalTabmanager::Get()->TryInvokeTab(FName("OutputLog"));
         }
 
         // We did manage to add the code itself, so we can close the dialog.
