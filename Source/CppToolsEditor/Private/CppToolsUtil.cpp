@@ -331,6 +331,15 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
 
     SlowTask.EnterProgressFrame();
 
+    // Mark the files for add in SCC
+    ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
+    if (ISourceControlModule::Get().IsEnabled() && SourceControlProvider.IsAvailable())
+    {
+        SourceControlProvider.Execute(ISourceControlOperation::Create<FMarkForAdd>(), CreatedFilesForExternalAppRead);
+    }
+
+    SlowTask.EnterProgressFrame();
+
     TArray<FString> CreatedFilesForExternalAppRead;
     CreatedFilesForExternalAppRead.Reserve(CreatedFiles.Num());
     for (const FString& CreatedFile : CreatedFiles)
@@ -338,16 +347,15 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
         CreatedFilesForExternalAppRead.Add(IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*CreatedFile));
     }
 
-    FSourceCodeNavigation::AddSourceFiles(CreatedFilesForExternalAppRead);
-
-    SlowTask.EnterProgressFrame();
-
-    // Mark the files for add in SCC
-    ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
-    if (ISourceControlModule::Get().IsEnabled() && SourceControlProvider.IsAvailable())
-    {
-        SourceControlProvider.Execute(ISourceControlOperation::Create<FMarkForAdd>(), CreatedFilesForExternalAppRead);
-    }
+    if (!FSourceCodeNavigation::AddSourceFiles(CreatedFilesForExternalAppRead))
+	{
+		// Generate project files if we happen to be using a project file.
+		if ( !FDesktopPlatformModule::Get()->GenerateProjectFiles(FPaths::RootDir(), FPaths::GetProjectFilePath(), GWarn) )
+		{
+			OutFailReason = LOCTEXT("FailedToGenerateProjectFiles", "Failed to generate project files.");
+			return EAddCodeToProjectResult::FailedToHotReload;
+		}
+	}
 
     SlowTask.EnterProgressFrame(1.0f, LOCTEXT("CompilingCPlusPlusCode", "Compiling new C++ code.  Please wait..."));
 
