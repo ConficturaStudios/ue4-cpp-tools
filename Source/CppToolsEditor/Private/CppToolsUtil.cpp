@@ -89,16 +89,6 @@ void CppToolsUtil::TryMakePluginFileWriteable(const FString& PluginFile)
     }
 }
 
-void CppToolsUtil::PushNotification(const FText& Text,
-    const SNotificationItem::ECompletionState& CompletionState = SNotificationItem::ECompletionState::CS_None)
-{
-    const FNotificationInfo Notification(Text);
-    auto SNotify = FSlateNotificationManager::Get().AddNotification(Notification);
-    SNotify->SetCompletionState(CompletionState);
-    SNotify->ExpireAndFadeout();
-    SNotify.Reset();
-}
-
 bool CppToolsUtil::ReadCustomTemplateFile(const FString& TemplateFileName, FString& OutFileContents, FText& OutFailReason) {
     const FString FullFileName = CppToolsContentDir() / TEXT("Editor") / TEXT("Templates") / TemplateFileName;
     if (FFileHelper::LoadFileToString(OutFileContents, *FullFileName))
@@ -110,6 +100,88 @@ bool CppToolsUtil::ReadCustomTemplateFile(const FString& TemplateFileName, FStri
     Args.Add(TEXT("FullFileName"), FText::FromString(FullFileName));
     OutFailReason = FText::Format(LOCTEXT("FailedToReadTemplateFile", "Failed to read template file \"{FullFileName}\""), Args);
     return false;
+}
+
+bool CppToolsUtil::FindFileInProject(const FString& InFilename, const FString& InSearchPath, FString& OutPath)
+{
+    // See GameProjectUtils L4094
+    TArray<FString> Filenames;
+    IFileManager::Get().FindFilesRecursive(Filenames, *InSearchPath, *InFilename, true, false, false);
+
+    if(Filenames.Num())
+    {
+        // Assume it's the first match (we should really only find a single file with a given name within a project anyway)
+        OutPath = Filenames[0];
+        return true;
+    }
+
+    return false;
+}
+
+FString CppToolsUtil::StripCStyleComments(const FString& SourceString)
+{
+    FString Result = SourceString;
+
+    const FString BlockCommentPattern = TEXT("(?:\\/\\*(?:[^\\*]*(?:(?!\\*\\/)\\*)*)*\\*\\/)");
+    const FString LineCommentPattern = TEXT("(?:\\/\\/.*)");
+    
+    const FRegexPattern CommentPattern(BlockCommentPattern + "|" + LineCommentPattern);
+    FRegexMatcher CommentMatcher(CommentPattern, Result);
+
+    while (CommentMatcher.FindNext())
+    {
+        int32 start = CommentMatcher.GetMatchBeginning();
+        int32 end = CommentMatcher.GetMatchEnding();
+
+        Result.RemoveAt(start, end - start);
+
+        CommentMatcher = FRegexMatcher(CommentPattern, Result);
+    }
+
+    return Result;
+}
+
+TArray<FString> CppToolsUtil::ParseStringList(const FString& RawStringList)
+{
+    TArray<FString> Strings;
+    const FRegexPattern StringPattern("\"([^\"]+)\"");
+    FRegexMatcher StringMatcher(StringPattern, RawStringList);
+
+    while (StringMatcher.FindNext())
+    {
+        Strings.Add(StringMatcher.GetCaptureGroup(1));
+    }
+
+    return Strings;
+}
+
+FString CppToolsUtil::CombineStringList(const TArray<FString>& StringList, bool bUseQuotes = false, bool bIncludeSpace = true)
+{
+    FString Result;
+    for (int32 I = 0; I < StringList.Num(); I++)
+    {
+        FString Element = StringList[I];
+        if (bUseQuotes) Element = "\"" + Element + "\"";
+
+        Result += Element;
+
+        if (I < StringList.Num() - 1)
+        {
+            Result += ",";
+            if (bIncludeSpace) Result += " ";
+        }
+    }
+    return Result;
+}
+
+void CppToolsUtil::PushNotification(const FText& Text,
+                                    const SNotificationItem::ECompletionState& CompletionState = SNotificationItem::ECompletionState::CS_None)
+{
+    const FNotificationInfo Notification(Text);
+    auto SNotify = FSlateNotificationManager::Get().AddNotification(Notification);
+    SNotify->SetCompletionState(CompletionState);
+    SNotify->ExpireAndFadeout();
+    SNotify.Reset();
 }
 
 FString CppToolsUtil::GetCopyrightLine() {
@@ -128,8 +200,105 @@ FString CppToolsUtil::GetModuleAPIMacro(const FString& ModuleName, bool bIsPriva
     return bIsPrivate ? FString() : ModuleName.ToUpper() + "_API ";
 }
 
+bool CppToolsUtil::GetModuleBuildFilePath(const FString& ModuleName, TSharedPtr<IPlugin> Target, FString& OutBuildFilePath)
+{
+    if (!Target.IsValid())
+    {
+        return FindFileInProject(ModuleName + ".Build.cs", FPaths::GameSourceDir(), OutBuildFilePath);
+    }
+    return FindFileInProject(ModuleName + ".Build.cs", Target->GetBaseDir(), OutBuildFilePath);
+}
+
+TArray<TSharedPtr<IPlugin>> CppToolsUtil::GetProjectPlugins()
+{
+    TArray<TSharedPtr<IPlugin>> Plugins;
+    for (const auto& Plugin : IPluginManager::Get().GetDiscoveredPlugins())
+    {
+        // Only get plugins that are a part of the game project
+        if (Plugin->GetLoadedFrom() == EPluginLoadedFrom::Project)
+        {
+            Plugins.Add(MakeShareable(&Plugin.Get()));
+        }
+    }
+    return Plugins;
+}
+
+TArray<FModuleContextInfo> CppToolsUtil::GetProjectModules()
+{
+    return GameProjectUtils::GetCurrentProjectModules();
+}
+
+TArray<FModuleContextInfo> CppToolsUtil::GetPluginModules(const TSharedPtr<IPlugin>& Plugin)
+{
+    // See GameProjectUtils.cpp L2609
+
+    TArray<FModuleContextInfo> AvailableModules;
+
+    if (!Plugin.IsValid()) return AvailableModules;
+
+    // Only get plugins that are a part of the game project
+    if (Plugin->GetLoadedFrom() == EPluginLoadedFrom::Project)
+    {
+        for (const auto& PluginModule : Plugin->GetDescriptor().Modules)
+        {
+            FModuleContextInfo ModuleInfo;
+            ModuleInfo.ModuleName = PluginModule.Name.ToString();
+            ModuleInfo.ModuleType = PluginModule.Type;
+
+            // Try and find the .Build.cs file for this module within the plugin source tree
+            FString TmpPath;
+            if (!FindFileInProject(ModuleInfo.ModuleName + ".Build.cs", Plugin->GetBaseDir(), TmpPath))
+            {
+                continue;
+            }
+
+            // Chop the .Build.cs file off the end of the path
+            ModuleInfo.ModuleSourcePath = FPaths::GetPath(TmpPath);
+            ModuleInfo.ModuleSourcePath = FPaths::ConvertRelativePathToFull(ModuleInfo.ModuleSourcePath / ""); // Ensure trailing /
+
+            AvailableModules.Emplace(ModuleInfo);
+        }
+    }
+
+    return AvailableModules;
+}
+
+TArray<FString> CppToolsUtil::GetModuleDependencies(const FString& ModuleName, TSharedPtr<IPlugin> Target = nullptr, bool bIncludePrivate = false)
+{
+    TArray<FString> Result;
+    
+    FString BuildFilePath;
+    if (!GetModuleBuildFilePath(ModuleName, Target, BuildFilePath)) return Result;
+
+    FString FileContents;
+    
+    if (FFileHelper::LoadFileToString(FileContents, *BuildFilePath))
+    {
+
+        FileContents = StripCStyleComments(FileContents);
+
+        FString DependencySource = "(?:PublicDependencyModuleNames)";
+        if (bIncludePrivate) DependencySource += "|(?:PrivateDependencyModuleNames)";
+        
+        const FString AddRangePattern = DependencySource +
+            "\\.AddRange\\(\\s*new\\s+string\\[\\s*\\]\\s*\\{\\s*((?:[^\\}]*(?:\\r\\n|\\r|\\n)?)*)\\s*\\}\\s*\\);";
+        const FString AddPattern = DependencySource + "\\.Add\\(([^\\)]+)\\);";
+        
+        const FRegexPattern DependenciesPattern("(?:" + AddRangePattern + ")|(?:" + AddPattern + ")");
+        FRegexMatcher DependenciesMatcher(DependenciesPattern, FileContents);
+
+        while (DependenciesMatcher.FindNext())
+        {
+            Result.Append(ParseStringList(DependenciesMatcher.GetCaptureGroup(1)));
+        }
+    }
+
+    return Result;
+}
+
 bool CppToolsUtil::GenerateModuleBuildFile(const FString& NewBuildFileName, const FString& ModuleName, const TArray<FString>& PublicDependencyModuleNames,
-    const TArray<FString>& PrivateDependencyModuleNames, FText& OutFailReason, bool bUseExplicitOrSharedPCHs) {
+    const TArray<FString>& PrivateDependencyModuleNames, FText& OutFailReason, bool bUseExplicitOrSharedPCHs)
+{
     
     FString Template;
     if (!ReadCustomTemplateFile(TEXT("Module.Build.cs.template"), Template, OutFailReason))
@@ -178,42 +347,66 @@ bool CppToolsUtil::GenerateModuleCPPFile(const FString& NewCPPFileName, const FS
     return GameProjectUtils::WriteOutputFile(NewCPPFileName, FinalOutput, OutFailReason);
 }
 
-bool CppToolsUtil::InsertDependencyIntoPrimaryBuild(const FString& ModuleName, TSharedPtr<IPlugin> Target,
-    const bool& bIsEditor, FText& OutFailReason)
+bool CppToolsUtil::InsertDependencyIntoModule(const FString& ModuleName, TSharedPtr<IPlugin> Target, const FString& DependencyName, FText& OutFailReason, bool bPrivate = false)
 {
     FString FileContents;
-    
-    FString TargetName = !Target.IsValid() ? FApp::GetProjectName() : Target->GetName();
-    if (bIsEditor)
+    FString BuildFilePath;
+    if (!GetModuleBuildFilePath(ModuleName, Target, BuildFilePath))
     {
-        TargetName += "Editor";
+        FFormatNamedArguments Args;
+        Args.Add(TEXT("ModuleName"), FText::FromString(ModuleName));
+        OutFailReason = FText::Format(LOCTEXT("FailedToReadBuildFile", "Failed to update \"{ModuleName}.Build.cs\""), Args);
+        return false;
     }
-    const FString SourcePath = (!Target.IsValid()) ? FPaths::GameSourceDir() : Target->GetBaseDir() / "Source";
     
-    const FString TargetPath = SourcePath / TargetName / TargetName + ".Build.cs";
+    TArray<FString> Dependencies = GetModuleDependencies(ModuleName, Target, false);
     
-    if (FFileHelper::LoadFileToString(FileContents, *TargetPath))
+    if (FFileHelper::LoadFileToString(FileContents, *BuildFilePath))
     {
 
-        // Check for existing ExtraModuleNames.AddRange command
-        const FRegexPattern PublicDependenciesPattern(
-            TEXT("PublicDependencyModuleNames\\.AddRange\\([\\s]*new string\\[\\][\\s]*\\{[\\s]*(.*)[\\s]*\\}[\\s]*\\);"));
-        FRegexMatcher PublicDependenciesMatcher(PublicDependenciesPattern, FileContents);
+        FString DependencySource = "(?:PublicDependencyModuleNames)";
+        
+        const FString AddRangePattern = DependencySource +
+            "\\.AddRange\\(\\s*new\\s+string\\[\\s*\\]\\s*\\{\\s*((?:[^\\}]*(?:\\r\\n|\\r|\\n)?)*)\\s*\\}\\s*\\);";
+        const FString AddPattern = DependencySource + "\\.Add\\(([^\\)]+)\\);";
+        
+        const FRegexPattern DependenciesPattern("(?:" + AddRangePattern + ")|(?:" + AddPattern + ")");
+        FRegexMatcher DependenciesMatcher(DependenciesPattern, FileContents);
 
-        if (PublicDependenciesMatcher.FindNext())
+        int32 lastStart = -1;
+        while (DependenciesMatcher.FindNext())
         {
-            int32 start = PublicDependenciesMatcher.GetMatchBeginning();
-            int32 end = PublicDependenciesMatcher.GetMatchEnding();
+            int32 start = DependenciesMatcher.GetMatchBeginning();
+            int32 end = DependenciesMatcher.GetMatchEnding();
+            
+            TArray<FString> List = ParseStringList(DependenciesMatcher.GetCaptureGroup(1));
+            bool bContains = true;
+            for (FString Dependency : List)
+            {
+                bContains &= Dependencies.Contains(Dependency);
+            }
+            
+            if (bContains)
+            {
+                lastStart = start;
+                FileContents.RemoveAt(start, end - start);
+            }
 
-            FileContents.RemoveAt(start, end - start);
+            DependenciesMatcher = FRegexMatcher(DependenciesPattern, FileContents);
+        }
+
+        Dependencies.Add(DependencyName);
+
+        if (lastStart != -1)
+        {
             
             FString InsertionText = TEXT("PublicDependencyModuleNames.AddRange( new string[] { MODULES } );");
             InsertionText = InsertionText.Replace(TEXT("MODULES"),
-                *(PublicDependenciesMatcher.GetCaptureGroup(1) + ", \"" + ModuleName + "\""), ESearchCase::CaseSensitive);
+                *CombineStringList(Dependencies, true, true), ESearchCase::CaseSensitive);
             
-            FileContents.InsertAt(start, InsertionText);
+            FileContents.InsertAt(lastStart, InsertionText);
 
-            FFileHelper::SaveStringToFile(FileContents, *TargetPath);
+            FFileHelper::SaveStringToFile(FileContents, *BuildFilePath);
 
             return true;
         }
@@ -222,7 +415,7 @@ bool CppToolsUtil::InsertDependencyIntoPrimaryBuild(const FString& ModuleName, T
     // Issue modifying or finding file
 
     FFormatNamedArguments Args;
-    Args.Add(TEXT("FullFileName"), FText::FromString(TargetPath));
+    Args.Add(TEXT("FullFileName"), FText::FromString(BuildFilePath));
     OutFailReason = FText::Format(LOCTEXT("FailedToReadBuildFile", "Failed to update \"{FullFileName}\""), Args);
     return false;
 }
@@ -361,9 +554,51 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
 
     SlowTask.EnterProgressFrame();
 
-    // Add to primary game module .Build.cs
+    // Add to appropriate module .Build.cs
     {
-        if (!InsertDependencyIntoPrimaryBuild(ModuleName, Target, Type == EHostType::Editor, OutFailReason))
+        FString OwningModule;
+        if (!Target.IsValid())
+        {
+            OwningModule = FApp::GetProjectName();
+            if (Type == EHostType::Editor) OwningModule += "Editor";
+        }
+        else
+        {
+            FString ExpectedOwner = Target->GetName();
+            if (Type == EHostType::Editor) ExpectedOwner += "Editor";
+            bool bFoundOwner = false;
+
+            // Search for a compatible module
+            // TODO: Replace this with specifying users during module creation
+            
+            TArray<FModuleContextInfo> Modules = GetPluginModules(Target);
+            if (Modules.Num() > 0)
+            {
+                for (FModuleContextInfo Module : Modules)
+                {
+                    if (Module.ModuleName == ExpectedOwner)
+                    {
+                        OwningModule = ExpectedOwner;
+                        bFoundOwner = true;
+                        break;
+                    }
+                }
+                if (!bFoundOwner)
+                {
+                    for (FModuleContextInfo Module : Modules)
+                    {
+                        if (Module.ModuleType == Type)
+                        {
+                            OwningModule = Module.ModuleName;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // Only add to the build if the module expected to use it exists
+        if (FModuleManager::Get().ModuleExists(*OwningModule) &&
+            !InsertDependencyIntoModule(OwningModule, Target, ModuleName, OutFailReason, false))
         {
             GameProjectUtils::DeleteCreatedFiles(ModulePath, CreatedFiles);
             return GameProjectUtils::EAddCodeToProjectResult::FailedToAddCode;
@@ -373,7 +608,7 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
     SlowTask.EnterProgressFrame();
 
     // Add to project target
-    {
+    if (!Target.IsValid()) {
         if (!InsertDependencyIntoTarget(ModuleName, Type == EHostType::Editor, OutFailReason))
         {
             GameProjectUtils::DeleteCreatedFiles(ModulePath, CreatedFiles);
