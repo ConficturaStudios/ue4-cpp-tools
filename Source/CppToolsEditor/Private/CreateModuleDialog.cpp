@@ -306,7 +306,7 @@ void SCreateModuleDialog::FinishClicked() {
     TArray<FString> CreatedFiles;
     FText OutFailReason;
 
-    GameProjectUtils::EAddCodeToProjectResult AddModuleResult = CppToolsUtil::GenerateModule(GetModulePath(), ModuleName, *ModuleType, false, CreatedFiles, OutFailReason);
+    GameProjectUtils::EAddCodeToProjectResult AddModuleResult = CppToolsUtil::GenerateModule(GetModulePath(), ModuleTarget->Plugin, ModuleName, *ModuleType, false, CreatedFiles, OutFailReason);
     if (AddModuleResult == GameProjectUtils::EAddCodeToProjectResult::Succeeded) {
 
         OnCreateModule.ExecuteIfBound(ModuleName, *ModuleTarget, *ModuleType);
@@ -458,16 +458,12 @@ void SCreateModuleDialog::UpdateInputValidity() {
         return;
     }
 
-    TArray<FName> AllModuleNames;
-    FModuleManager::Get().FindModules(L"*", AllModuleNames);
-    for (const FName& Module : AllModuleNames) {
-        if (ModuleName.Equals(Module.ToString())) {
-            bLastInputValidityCheckSuccessful = false;
-            FFormatNamedArguments Args;
-            Args.Add(TEXT("ModuleName"), FText::FromString(ModuleName));
-            LastInputValidityErrorText = FText::Format(LOCTEXT("ModuleNameWarning", "Module '{ModuleName}' already exists"), Args);
-            return;
-        }
+    if (FModuleManager::Get().ModuleExists(*ModuleName)) {
+        bLastInputValidityCheckSuccessful = false;
+        FFormatNamedArguments Args;
+        Args.Add(TEXT("ModuleName"), FText::FromString(ModuleName));
+        LastInputValidityErrorText = FText::Format(LOCTEXT("ModuleNameWarning", "Module '{ModuleName}' already exists"), Args);
+        return;
     }
 
 }

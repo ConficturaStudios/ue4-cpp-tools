@@ -1,6 +1,7 @@
 %COPYRIGHT_LINE%
 
 using UnrealBuildTool;
+using System.IO;
 
 public class %MODULE_NAME% : ModuleRules
 {
@@ -14,5 +15,10 @@ public class %MODULE_NAME% : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[] { %PUBLIC_DEPENDENCY_MODULE_NAMES% });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { %PRIVATE_DEPENDENCY_MODULE_NAMES% });
+
+
+		PublicIncludePaths.AddRange(new string[] { Path.Combine(ModuleDirectory, "Public") });
+
+		PrivateIncludePaths.AddRange(new string[] { Path.Combine(ModuleDirectory, "Private") });
 	}
 }

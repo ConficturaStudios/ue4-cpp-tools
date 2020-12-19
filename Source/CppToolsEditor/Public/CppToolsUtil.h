@@ -41,11 +41,18 @@ public:
     static FString GetCopyrightLine();
     static FString GetModuleAPIMacro(const FString& ModuleName, bool bIsPrivate);
 
-    static bool GenerateModuleBuildFile(const FString& NewBuildFileName, const FString& ModuleName, const TArray<FString>& PublicDependencyModuleNames, const TArray<FString>& PrivateDependencyModuleNames, FText& OutFailReason, bool bUseExplicitOrSharedPCHs);
-    static bool GenerateModuleHeaderFile(const FString& NewHeaderFileName, const FString& ModuleName, const TArray<FString>& PublicHeaderIncludes, FText& OutFailReason);
-    static bool GenerateModuleCPPFile(const FString& NewCPPFileName, const FString& ModuleName, const FString& StartupSourceCode, const FString& ShutdownSourceCode, FText& OutFailReason);
+    static bool GenerateModuleBuildFile(const FString& NewBuildFileName, const FString& ModuleName, const TArray<FString>& PublicDependencyModuleNames,
+        const TArray<FString>& PrivateDependencyModuleNames, FText& OutFailReason, bool bUseExplicitOrSharedPCHs);
+    static bool GenerateModuleHeaderFile(const FString& NewHeaderFileName, const FString& ModuleName, const TArray<FString>& PublicHeaderIncludes,
+        FText& OutFailReason);
+    static bool GenerateModuleCPPFile(const FString& NewCPPFileName, const FString& ModuleName, const FString& StartupSourceCode,
+        const FString& ShutdownSourceCode, FText& OutFailReason);
 
-    static GameProjectUtils::EAddCodeToProjectResult GenerateModule(const FString& ModulePath, const FString& ModuleName, const EHostType::Type& Type, bool bUsePCH, TArray<FString>& CreatedFiles, FText& OutFailReason);
+    static bool InsertDependencyIntoPrimaryBuild(const FString& ModuleName, TSharedPtr<IPlugin> Target, const bool& bIsEditor, FText& OutFailReason);
+    static bool InsertDependencyIntoTarget(const FString& ModuleName, const bool& bIsEditor, FText& OutFailReason);
+
+    static GameProjectUtils::EAddCodeToProjectResult GenerateModule(const FString& ModulePath, TSharedPtr<IPlugin> Target,
+        const FString& ModuleName, const EHostType::Type& Type, bool bUsePCH, TArray<FString>& CreatedFiles, FText& OutFailReason);
 
 private:
 

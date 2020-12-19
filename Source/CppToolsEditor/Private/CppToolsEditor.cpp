@@ -30,9 +30,6 @@ void FCppToolsEditorModule::ShutdownModule()
 void FCppToolsEditorModule::AddMenuEntry(FMenuBuilder& MenuBuilder) {
     MenuBuilder.BeginSection("CppTools", TAttribute<FText>(FText::FromString("C++ Tools")));
     {
-        /*MenuBuilder.AddSubMenu(FText::FromString("Cpp Tools Submenu"),
-            FText::FromString("Cpp Tools Submenu Tooltip"),
-            FNewMenuDelegate::CreateRaw(this, &FCppToolsEditorModule::FillSubmenu));*/
         MenuBuilder.AddMenuEntry(
             FText::FromString("New C++ Module..."),
             FText::FromString("Create a new C++ Module"),
@@ -47,21 +44,6 @@ void FCppToolsEditorModule::AddMenuEntry(FMenuBuilder& MenuBuilder) {
         );
     }
     MenuBuilder.EndSection();
-}
-
-void FCppToolsEditorModule::FillSubmenu(FMenuBuilder& MenuBuilder) {
-    MenuBuilder.AddMenuEntry(
-        FText::FromString("Restart Editor"),
-        FText::FromString("Restart Editor Tooltip"),
-        FSlateIcon(),
-        FUIAction(FExecuteAction::CreateRaw(this, &FCppToolsEditorModule::RestartEditor))
-    );
-    MenuBuilder.AddMenuEntry(
-        FText::FromString("New Cpp Module..."),
-        FText::FromString("New Cpp Module Tooltip"),
-        FSlateIcon(),
-        FUIAction(FExecuteAction::CreateRaw(this, &FCppToolsEditorModule::OnNewCppModule))
-    );
 }
 
 void FCppToolsEditorModule::OnNewCppModule() {

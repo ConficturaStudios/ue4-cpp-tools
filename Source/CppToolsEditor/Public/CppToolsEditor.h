@@ -20,7 +20,6 @@ public:
 private:
 
 	void AddMenuEntry(FMenuBuilder& MenuBuilder);
-	void FillSubmenu(FMenuBuilder& MenuBuilder);
 
 	void OnNewCppModule();
 	void RestartEditor();

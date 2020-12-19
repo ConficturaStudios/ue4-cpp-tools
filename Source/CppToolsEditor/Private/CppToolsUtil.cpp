@@ -3,6 +3,10 @@
 
 #include "CppToolsUtil.h"
 
+
+#include "Editor/EditorPerProjectUserSettings.h"
+#include "Internationalization/Regex.h"
+
 #define LOCTEXT_NAMESPACE "CppToolsUtil"
 
 
@@ -40,7 +44,9 @@ FString CppToolsUtil::GetModuleAPIMacro(const FString& ModuleName, bool bIsPriva
     return bIsPrivate ? FString() : ModuleName.ToUpper() + "_API ";
 }
 
-bool CppToolsUtil::GenerateModuleBuildFile(const FString& NewBuildFileName, const FString& ModuleName, const TArray<FString>& PublicDependencyModuleNames, const TArray<FString>& PrivateDependencyModuleNames, FText& OutFailReason, bool bUseExplicitOrSharedPCHs) {
+bool CppToolsUtil::GenerateModuleBuildFile(const FString& NewBuildFileName, const FString& ModuleName, const TArray<FString>& PublicDependencyModuleNames,
+    const TArray<FString>& PrivateDependencyModuleNames, FText& OutFailReason, bool bUseExplicitOrSharedPCHs) {
+    
     FString Template;
     if (!ReadCustomTemplateFile(TEXT("Module.Build.cs.template"), Template, OutFailReason))
     {
@@ -88,13 +94,133 @@ bool CppToolsUtil::GenerateModuleCPPFile(const FString& NewCPPFileName, const FS
     return GameProjectUtils::WriteOutputFile(NewCPPFileName, FinalOutput, OutFailReason);
 }
 
-GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FString& ModulePath, const FString& ModuleName, const EHostType::Type& Type, bool bUsePCH, TArray<FString>& CreatedFiles, FText& OutFailReason) {
+bool CppToolsUtil::InsertDependencyIntoPrimaryBuild(const FString& ModuleName, TSharedPtr<IPlugin> Target,
+    const bool& bIsEditor, FText& OutFailReason)
+{
+    FString FileContents;
+    
+    FString TargetName = Target == nullptr ? FApp::GetProjectName() : Target->GetName();
+    if (bIsEditor)
+    {
+        TargetName += "Editor";
+    }
+    const FString SourcePath = (Target == nullptr) ? FPaths::GameSourceDir() : Target->GetBaseDir() / "Source";
+    
+    const FString TargetPath = SourcePath / TargetName / TargetName + ".Build.cs";
+    
+    if (FFileHelper::LoadFileToString(FileContents, *TargetPath))
+    {
+
+        // Check for existing ExtraModuleNames.AddRange command
+        const FRegexPattern PublicDependenciesPattern(
+            TEXT("PublicDependencyModuleNames\\.AddRange\\([\\s]*new string\\[\\][\\s]*\\{[\\s]*(.*)[\\s]*\\}[\\s]*\\);"));
+        FRegexMatcher PublicDependenciesMatcher(PublicDependenciesPattern, FileContents);
+
+        if (PublicDependenciesMatcher.FindNext())
+        {
+            int32 start = PublicDependenciesMatcher.GetMatchBeginning();
+            int32 end = PublicDependenciesMatcher.GetMatchEnding();
+
+            FileContents.RemoveAt(start, end - start);
+            
+            FString InsertionText = TEXT("PublicDependencyModuleNames.AddRange( new string[] { MODULES } );");
+            InsertionText = InsertionText.Replace(TEXT("MODULES"),
+                *(PublicDependenciesMatcher.GetCaptureGroup(1) + ", \"" + ModuleName + "\""), ESearchCase::CaseSensitive);
+            
+            FileContents.InsertAt(start, InsertionText);
+
+            FFileHelper::SaveStringToFile(FileContents, *TargetPath);
+
+            return true;
+        }
+    }
+
+    // Issue modifying or finding file
+
+    FFormatNamedArguments Args;
+    Args.Add(TEXT("FullFileName"), FText::FromString(TargetPath));
+    OutFailReason = FText::Format(LOCTEXT("FailedToReadBuildFile", "Failed to update \"{FullFileName}\""), Args);
+    return false;
+}
+
+bool CppToolsUtil::InsertDependencyIntoTarget(const FString& ModuleName, const bool& bIsEditor, FText& OutFailReason)
+{
+    FString FileContents;
+    
+    FString PrimaryGameTargetName = FApp::GetProjectName();
+    if (bIsEditor)
+    {
+        PrimaryGameTargetName += "Editor";
+    }
+    
+    const FString TargetPath = FPaths::GameSourceDir() / PrimaryGameTargetName + ".Target.cs";
+    
+    if (FFileHelper::LoadFileToString(FileContents, *TargetPath))
+    {
+
+        // Check for existing ExtraModuleNames.AddRange command
+        const FRegexPattern ExtraModulesPattern(
+            TEXT("ExtraModuleNames\\.AddRange\\([\\s]*new string\\[\\][\\s]*\\{[\\s]*(.*)[\\s]*\\}[\\s]*\\);"));
+        FRegexMatcher ExtraModulesMatcher(ExtraModulesPattern, FileContents);
+
+        if (ExtraModulesMatcher.FindNext())
+        {
+            int32 start = ExtraModulesMatcher.GetMatchBeginning();
+            int32 end = ExtraModulesMatcher.GetMatchEnding();
+
+            FileContents.RemoveAt(start, end - start);
+            
+            FString InsertionText = TEXT("ExtraModuleNames.AddRange( new string[] { MODULES } );");
+            InsertionText = InsertionText.Replace(TEXT("MODULES"),
+                *(ExtraModulesMatcher.GetCaptureGroup(1) + ", \"" + ModuleName + "\""), ESearchCase::CaseSensitive);
+            
+            FileContents.InsertAt(start, InsertionText);
+
+            FFileHelper::SaveStringToFile(FileContents, *TargetPath);
+
+            return true;
+        }
+        
+        // Insert new ExtraModuleNames.AddRange command if not found
+        /*const FRegexPattern TargetConstructorPattern(TEXT("public[\\s]+") + PrimaryGameTargetName
+            + TEXT("[\\s]*\\(.*\\)[\\s]*:[\\s]*base\\(.*\\)[\\s]*\\{.*\\}"));
+        FRegexMatcher TargetConstructorMatcher(TargetConstructorPattern, FileContents);
+
+        if (TargetConstructorMatcher.FindNext())
+        {
+            int32 end = TargetConstructorMatcher.GetMatchEnding();
+            
+            FString InsertionText = TEXT("\tExtraModuleNames.AddRange( new string[] { MODULES } );");
+            InsertionText += LINE_TERMINATOR;
+            InsertionText += "\t";
+            InsertionText = InsertionText.Replace(TEXT("MODULES"),
+                *(PrimaryGameTargetName + ", " + ModuleName), ESearchCase::CaseSensitive);
+            
+            FileContents.InsertAt(end - 1, InsertionText);
+
+            FFileHelper::SaveStringToFile(FileContents, *TargetPath);
+
+            return true;
+        }*/
+    }
+
+    // Issue modifying or finding file
+
+    FFormatNamedArguments Args;
+    Args.Add(TEXT("FullFileName"), FText::FromString(TargetPath));
+    OutFailReason = FText::Format(LOCTEXT("FailedToReadTargetFile", "Failed to update \"{FullFileName}\""), Args);
+    return false;
+}
+
+GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FString& ModulePath, TSharedPtr<IPlugin> Target,
+    const FString& ModuleName, const EHostType::Type& Type, bool bUsePCH, TArray<FString>& CreatedFiles, FText& OutFailReason)
+{
 
     //TODO: Add data validation
 
     TArray<FModuleDescriptor> GeneratedModules;
 
-    FScopedSlowTask SlowTask(8, LOCTEXT("AddingModuleToProject", "Adding module to project..."));
+    FScopedSlowTask SlowTask(10, LOCTEXT("AddingModuleToProject", "Adding module to project..."));
     SlowTask.MakeDialog();
 
     SlowTask.EnterProgressFrame();
@@ -117,22 +243,6 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
             return GameProjectUtils::EAddCodeToProjectResult::FailedToAddCode;
         }
     }
-
-    SlowTask.EnterProgressFrame();
-
-    auto Modifier = FProjectDescriptorModifier::CreateLambda(
-        [&GeneratedModules](FProjectDescriptor& Descriptor)
-        {
-            // See GameProjectUtils.cpp L3920
-            bool bNeedsUpdate = false;
-
-            bNeedsUpdate |= AppendProjectModules(Descriptor, &GeneratedModules);
-            //bNeedsUpdate |= UpdateRequiredAdditionalDependencies(Descriptor, RequiredDependencies, ModuleInfo.ModuleName);
-
-            return bNeedsUpdate;
-        });
-
-    UpdateGameProject(&Modifier);
 
     SlowTask.EnterProgressFrame();
 
@@ -167,6 +277,48 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
 
     SlowTask.EnterProgressFrame();
 
+    // Add to primary game module .Build.cs
+    {
+        if (!InsertDependencyIntoPrimaryBuild(ModuleName, Target, Type == EHostType::Editor, OutFailReason))
+        {
+            GameProjectUtils::DeleteCreatedFiles(ModulePath, CreatedFiles);
+            return GameProjectUtils::EAddCodeToProjectResult::FailedToAddCode;
+        }
+    }
+    
+    SlowTask.EnterProgressFrame();
+
+    // Add to project target
+    {
+        if (!InsertDependencyIntoTarget(ModuleName, Type == EHostType::Editor, OutFailReason))
+        {
+            GameProjectUtils::DeleteCreatedFiles(ModulePath, CreatedFiles);
+            return GameProjectUtils::EAddCodeToProjectResult::FailedToAddCode;
+        }
+    }
+
+    SlowTask.EnterProgressFrame();
+
+    // Update .uproject file
+
+    auto Modifier = FProjectDescriptorModifier::CreateLambda(
+        [&GeneratedModules](FProjectDescriptor& Descriptor)
+        {
+            // See GameProjectUtils.cpp L3920
+            bool bNeedsUpdate = false;
+
+            bNeedsUpdate |= AppendProjectModules(Descriptor, &GeneratedModules);
+            //bNeedsUpdate |= UpdateRequiredAdditionalDependencies(Descriptor, RequiredDependencies, ModuleInfo.ModuleName);
+
+            return bNeedsUpdate;
+        });
+
+    UpdateGameProject(&Modifier);
+
+    SlowTask.EnterProgressFrame();
+
+    // Rebuild project
+
     FString ProjectFileName = IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FPaths::GetProjectFilePath());
     //FString Arguments = FString::Printf(TEXT("%s %s %s -Plugin=\"%s\" -Project=\"%s\" -Progress -NoHotReloadFromIDE"), FPlatformMisc::GetUBTTargetName(), FModuleManager::Get().GetUBTConfiguration(), FPlatformMisc::GetUBTPlatform(), *UPluginFilePath, *ProjectFileName);
     FString Arguments = FString::Printf(TEXT("%s %s %s -Project=\"%s\" -Progress -NoHotReloadFromIDE"), FPlatformMisc::GetUBTTargetName(), FModuleManager::Get().GetUBTConfiguration(), FPlatformMisc::GetUBTPlatform(), *ProjectFileName);
@@ -199,8 +351,11 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
 
     SlowTask.EnterProgressFrame(1.0f, LOCTEXT("CompilingCPlusPlusCode", "Compiling new C++ code.  Please wait..."));
 
+    // Hot reload files
+    // See: GameProjectUtils.cpp L4043
+    
     IHotReloadInterface& HotReloadSupport = FModuleManager::LoadModuleChecked<IHotReloadInterface>("HotReload");
-    if (!HotReloadSupport.RecompileModule(*ModuleName, *GWarn, ERecompileModuleFlags::ReloadAfterRecompile | ERecompileModuleFlags::ForceCodeProject))
+    if (!HotReloadSupport.RecompileModule(*ModuleName, *GWarn, ERecompileModuleFlags::ReloadAfterRecompile))
     {
         OutFailReason = LOCTEXT("FailedToCompileNewModule", "Failed to compile newly created module.");
         return GameProjectUtils::EAddCodeToProjectResult::FailedToHotReload;
