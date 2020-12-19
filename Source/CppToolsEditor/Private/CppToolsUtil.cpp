@@ -3,7 +3,6 @@
 
 #include "CppToolsUtil.h"
 
-
 #include "Editor/EditorPerProjectUserSettings.h"
 #include "Internationalization/Regex.h"
 
@@ -13,6 +12,91 @@
 FString CppToolsUtil::CppToolsContentDir() {
     static FString ContentDir = IPluginManager::Get().FindPlugin(TEXT("CppTools"))->GetContentDir();
     return ContentDir;
+}
+
+bool CppToolsUtil::CheckoutFile(const FString& Filename, FText& OutFailReason)
+{
+    // See GameProjectUtils.cpp L3700
+    
+    if ( !ensure(Filename.Len()) )
+    {
+        OutFailReason = LOCTEXT("NoFilename", "The filename was not specified.");
+        return false;
+    }
+
+    if ( !ISourceControlModule::Get().IsEnabled() )
+    {
+        OutFailReason = LOCTEXT("SCCDisabled", "Source control is not enabled. Enable source control in the preferences menu.");
+        return false;
+    }
+
+    FString AbsoluteFilename = FPaths::ConvertRelativePathToFull(Filename);
+    ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
+    FSourceControlStatePtr SourceControlState = SourceControlProvider.GetState(AbsoluteFilename, EStateCacheUsage::ForceUpdate);
+    TArray<FString> FilesToBeCheckedOut;
+    FilesToBeCheckedOut.Add(AbsoluteFilename);
+
+    bool bSuccessfullyCheckedOut = false;
+    OutFailReason = LOCTEXT("SCCStateInvalid", "Could not determine source control state.");
+
+    if(SourceControlState.IsValid())
+    {
+        if(SourceControlState->IsCheckedOut() || SourceControlState->IsAdded() || !SourceControlState->IsSourceControlled())
+        {
+            // Already checked out or opened for add... or not in the depot at all
+            bSuccessfullyCheckedOut = true;
+        }
+        else if(SourceControlState->CanCheckout() || SourceControlState->IsCheckedOutOther())
+        {
+            bSuccessfullyCheckedOut = (SourceControlProvider.Execute(ISourceControlOperation::Create<FCheckOut>(), FilesToBeCheckedOut) == ECommandResult::Succeeded);
+            if (!bSuccessfullyCheckedOut)
+            {
+                OutFailReason = LOCTEXT("SCCCheckoutFailed", "Failed to check out the project file.");
+            }
+        }
+        else if(!SourceControlState->IsCurrent())
+        {
+            OutFailReason = LOCTEXT("SCCNotCurrent", "The project file is not at head revision.");
+        }
+    }
+
+    return bSuccessfullyCheckedOut;
+}
+
+void CppToolsUtil::TryMakePluginFileWriteable(const FString& PluginFile)
+{
+    // See GameProjectUtils.cpp L3629
+
+    // First attempt to check out the file if SCC is enabled
+    if ( ISourceControlModule::Get().IsEnabled() )
+    {
+        FText FailReason;
+        CheckoutFile(PluginFile, FailReason);
+    }
+
+    // Check if it's writable
+    if(FPlatformFileManager::Get().GetPlatformFile().IsReadOnly(*PluginFile))
+    {
+        FText ShouldMakePluginWriteable = LOCTEXT("ShouldMakePluginWriteable_Message", "'{PluginFilename}' is read-only and cannot be updated. Would you like to make it writeable?");
+
+        FFormatNamedArguments Arguments;
+        Arguments.Add( TEXT("PluginFilename"), FText::FromString(PluginFile));
+
+        if(FMessageDialog::Open(EAppMsgType::YesNo, FText::Format(ShouldMakePluginWriteable, Arguments)) == EAppReturnType::Yes)
+        {
+            FPlatformFileManager::Get().GetPlatformFile().SetReadOnly(*PluginFile, false);
+        }
+    }
+}
+
+void CppToolsUtil::PushNotification(const FText& Text,
+    const SNotificationItem::ECompletionState& CompletionState = SNotificationItem::ECompletionState::CS_None)
+{
+    const FNotificationInfo Notification(Text);
+    auto SNotify = FSlateNotificationManager::Get().AddNotification(Notification);
+    SNotify->SetCompletionState(CompletionState);
+    SNotify->ExpireAndFadeout();
+    SNotify.Reset();
 }
 
 bool CppToolsUtil::ReadCustomTemplateFile(const FString& TemplateFileName, FString& OutFileContents, FText& OutFailReason) {
@@ -220,7 +304,7 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
 
     TArray<FModuleDescriptor> GeneratedModules;
 
-    FScopedSlowTask SlowTask(10, LOCTEXT("AddingModuleToProject", "Adding module to project..."));
+    FScopedSlowTask SlowTask(11, LOCTEXT("AddingModuleToProject", "Adding module to project..."));
     SlowTask.MakeDialog();
 
     SlowTask.EnterProgressFrame();
@@ -299,21 +383,36 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
 
     SlowTask.EnterProgressFrame();
 
-    // Update .uproject file
+    if (Target != nullptr)
+    {
+        // Update .uproject file
+        auto Modifier = FProjectDescriptorModifier::CreateLambda(
+            [&GeneratedModules](FProjectDescriptor& Descriptor)
+            {
+                // See GameProjectUtils.cpp L3920
+                bool bNeedsUpdate = false;
 
-    auto Modifier = FProjectDescriptorModifier::CreateLambda(
-        [&GeneratedModules](FProjectDescriptor& Descriptor)
-        {
-            // See GameProjectUtils.cpp L3920
-            bool bNeedsUpdate = false;
+                bNeedsUpdate |= AppendProjectModules(Descriptor, &GeneratedModules);
+                //bNeedsUpdate |= UpdateRequiredAdditionalDependencies(Descriptor, RequiredDependencies, ModuleInfo.ModuleName);
 
-            bNeedsUpdate |= AppendProjectModules(Descriptor, &GeneratedModules);
-            //bNeedsUpdate |= UpdateRequiredAdditionalDependencies(Descriptor, RequiredDependencies, ModuleInfo.ModuleName);
+                return bNeedsUpdate;
+            });
 
-            return bNeedsUpdate;
-        });
+        UpdateGameProject(&Modifier);
+    }
+    else
+    {
+        // Update .uplugin file
+        auto Modifier = FPluginDescriptorModifier::CreateLambda(
+            [&GeneratedModules](FPluginDescriptor& Descriptor)
+            {
+                bool bNeedsUpdate = false;
+                bNeedsUpdate |= AppendPluginModules(Descriptor, &GeneratedModules);
+                return bNeedsUpdate;
+            });
 
-    UpdateGameProject(&Modifier);
+        UpdatePlugin(Target, &Modifier);
+    }
 
     SlowTask.EnterProgressFrame();
 
@@ -331,6 +430,15 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
 
     SlowTask.EnterProgressFrame();
 
+    TArray<FString> CreatedFilesForExternalAppRead;
+    CreatedFilesForExternalAppRead.Reserve(CreatedFiles.Num());
+    for (const FString& CreatedFile : CreatedFiles)
+    {
+        CreatedFilesForExternalAppRead.Add(IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*CreatedFile));
+    }
+
+    SlowTask.EnterProgressFrame();
+
     // Mark the files for add in SCC
     ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
     if (ISourceControlModule::Get().IsEnabled() && SourceControlProvider.IsAvailable())
@@ -340,20 +448,14 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
 
     SlowTask.EnterProgressFrame();
 
-    TArray<FString> CreatedFilesForExternalAppRead;
-    CreatedFilesForExternalAppRead.Reserve(CreatedFiles.Num());
-    for (const FString& CreatedFile : CreatedFiles)
-    {
-        CreatedFilesForExternalAppRead.Add(IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*CreatedFile));
-    }
-
+    // Attempt to add files to solution
     if (!FSourceCodeNavigation::AddSourceFiles(CreatedFilesForExternalAppRead))
 	{
 		// Generate project files if we happen to be using a project file.
 		if ( !FDesktopPlatformModule::Get()->GenerateProjectFiles(FPaths::RootDir(), FPaths::GetProjectFilePath(), GWarn) )
 		{
 			OutFailReason = LOCTEXT("FailedToGenerateProjectFiles", "Failed to generate project files.");
-			return EAddCodeToProjectResult::FailedToHotReload;
+			return GameProjectUtils::EAddCodeToProjectResult::FailedToHotReload;
 		}
 	}
 
@@ -407,6 +509,7 @@ bool CppToolsUtil::UpdateGameProject(const FProjectDescriptorModifier* Modifier)
         Args.Add(TEXT("ShortFilename"), FText::FromString(ShortFilename));
         UpdateMessage = FText::Format(LOCTEXT("ProjectFileUpdateComplete", "{ShortFilename} was successfully updated."), Args);
         NewCompletionState = SNotificationItem::CS_Success;
+        PushNotification(UpdateMessage, NewCompletionState);
         return true;
     }
     else {
@@ -416,16 +519,9 @@ bool CppToolsUtil::UpdateGameProject(const FProjectDescriptorModifier* Modifier)
         Args.Add(TEXT("FailReason"), FailReason);
         UpdateMessage = FText::Format(LOCTEXT("ProjectFileUpdateFailed", "{ShortFilename} failed to update. {FailReason}"), Args);
         NewCompletionState = SNotificationItem::CS_Fail;
+        PushNotification(UpdateMessage, NewCompletionState);
         return false;
     }
-
-    /*if ( UpdateGameProjectNotification.IsValid() )
-	{
-		UpdateGameProjectNotification.Pin()->SetCompletionState(NewCompletionState);
-		UpdateGameProjectNotification.Pin()->SetText(UpdateMessage);
-		UpdateGameProjectNotification.Pin()->ExpireAndFadeout();
-		UpdateGameProjectNotification.Reset();
-	}*/
 }
 
 bool CppToolsUtil::AppendProjectModules(FProjectDescriptor& Descriptor, const TArray<FModuleDescriptor>* Modules) {
@@ -436,10 +532,21 @@ bool CppToolsUtil::AppendProjectModules(FProjectDescriptor& Descriptor, const TA
     {
         auto Element = (*Modules)[Idx];
         bool bContains = false;
+        bool bUpdatedPrimary = false;
         for (int32 I = 0; I < Descriptor.Modules.Num(); I++) {
-            if (Descriptor.Modules[I].Name == (*Modules)[Idx].Name) {
+            if (!bContains && Descriptor.Modules[I].Name == Element.Name) {
                 bContains = true;
-                break;
+                if (bUpdatedPrimary) break;
+            }
+            if (!bUpdatedPrimary && Descriptor.Modules[I].Name == FApp::GetProjectName())
+            {
+                auto& AdditionalDependencies = Descriptor.Modules[I].AdditionalDependencies;
+                if (!AdditionalDependencies.Contains(Element.Name.ToString()))
+                {
+                    AdditionalDependencies.Add(Element.Name.ToString());
+                }
+                bUpdatedPrimary = true;
+                if (bContains) break;
             }
         }
         if (!bContains) Descriptor.Modules.Add(Element);
@@ -450,5 +557,81 @@ bool CppToolsUtil::AppendProjectModules(FProjectDescriptor& Descriptor, const TA
     return true;
 }
 
+bool CppToolsUtil::UpdatePluginFile(const FString& PluginFile, const FPluginDescriptorModifier* Modifier, FText& OutFailReason)
+{
+    TryMakePluginFileWriteable(PluginFile);
+
+    FPluginDescriptor Descriptor;
+    if (Descriptor.Load(PluginFile, OutFailReason)) {
+        if (Modifier && Modifier->IsBound() && !Modifier->Execute(Descriptor)) {
+            return true;
+        }
+        return Descriptor.Save(PluginFile, OutFailReason);
+    }
+    return false;
+}
+
+bool CppToolsUtil::UpdatePlugin(const TSharedPtr<IPlugin>& Plugin, const FPluginDescriptorModifier* Modifier)
+{
+    const FString& PluginFilename = Plugin->GetDescriptorFileName();
+    const FString& ShortFilename = FPaths::GetCleanFilename(PluginFilename);
+
+    FText FailReason;
+    FText UpdateMessage;
+    SNotificationItem::ECompletionState NewCompletionState;
+
+    if (UpdatePluginFile(PluginFilename, Modifier, FailReason)) {
+        // Plugin Updated Successfully
+        FFormatNamedArguments Args;
+        Args.Add(TEXT("ShortFilename"), FText::FromString(ShortFilename));
+        UpdateMessage = FText::Format(LOCTEXT("PluginFileUpdateComplete", "{ShortFilename} was successfully updated."), Args);
+        NewCompletionState = SNotificationItem::CS_Success;
+        PushNotification(UpdateMessage, NewCompletionState);
+        return true;
+    }
+    else {
+        // The user chose to update, but the update failed. Notify the user.
+        FFormatNamedArguments Args;
+        Args.Add(TEXT("ShortFilename"), FText::FromString(ShortFilename));
+        Args.Add(TEXT("FailReason"), FailReason);
+        UpdateMessage = FText::Format(LOCTEXT("PluginFileUpdateFailed", "{ShortFilename} failed to update. {FailReason}"), Args);
+        NewCompletionState = SNotificationItem::CS_Fail;
+        PushNotification(UpdateMessage, NewCompletionState);
+        return false;
+    }
+}
+
+bool CppToolsUtil::AppendPluginModules(FPluginDescriptor& Descriptor, const TArray<FModuleDescriptor>* Modules)
+{
+    if (Modules == nullptr) return false;
+
+    for (int32 Idx = 0; Idx < Modules->Num(); Idx++)
+    {
+        auto Element = (*Modules)[Idx];
+        bool bContains = false;
+        bool bUpdatedPrimary = false;
+        for (int32 I = 0; I < Descriptor.Modules.Num(); I++) {
+            if (!bContains && Descriptor.Modules[I].Name == Element.Name) {
+                bContains = true;
+                if (bUpdatedPrimary) break;
+            }
+            if (!bUpdatedPrimary && Descriptor.Modules[I].Name == FApp::GetProjectName())
+            {
+                auto& AdditionalDependencies = Descriptor.Modules[I].AdditionalDependencies;
+                if (!AdditionalDependencies.Contains(Element.Name.ToString()))
+                {
+                    AdditionalDependencies.Add(Element.Name.ToString());
+                }
+                bUpdatedPrimary = true;
+                if (bContains) break;
+            }
+        }
+        if (!bContains) Descriptor.Modules.Add(Element);
+    }
+
+    GameProjectUtils::ResetCurrentProjectModulesCache();
+
+    return true;
+}
 
 #undef LOCTEXT_NAMESPACE
