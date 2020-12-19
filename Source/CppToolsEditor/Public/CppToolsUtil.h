@@ -128,6 +128,6 @@ private:
     static bool UpdatePluginFile(const FString& PluginFile, const FPluginDescriptorModifier* Modifier, FText& OutFailReason);
     static bool UpdatePlugin(const TSharedPtr<IPlugin>&, const FPluginDescriptorModifier* Modifier);
 
-    static bool AppendPluginModules(FPluginDescriptor& Descriptor, const TArray<FModuleDescriptor>* Modules);
+    static bool AppendPluginModules(FPluginDescriptor& Descriptor, TSharedPtr<IPlugin> Plugin, const TArray<FModuleDescriptor>* Modules);
 
 };

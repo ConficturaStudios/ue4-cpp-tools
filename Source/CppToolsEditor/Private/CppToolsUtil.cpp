@@ -639,10 +639,10 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
     {
         // Update .uplugin file
         auto Modifier = FPluginDescriptorModifier::CreateLambda(
-            [&GeneratedModules](FPluginDescriptor& Descriptor)
+            [&GeneratedModules, &Target](FPluginDescriptor& Descriptor)
             {
                 bool bNeedsUpdate = false;
-                bNeedsUpdate |= AppendPluginModules(Descriptor, &GeneratedModules);
+                bNeedsUpdate |= AppendPluginModules(Descriptor, Target, &GeneratedModules);
                 return bNeedsUpdate;
             });
 
@@ -773,7 +773,8 @@ bool CppToolsUtil::AppendProjectModules(FProjectDescriptor& Descriptor, const TA
                 bContains = true;
                 if (bUpdatedPrimary) break;
             }
-            if (!bUpdatedPrimary && Descriptor.Modules[I].Name == FApp::GetProjectName())
+            if (!bUpdatedPrimary && Descriptor.Modules[I].Name.ToString() == FString(FApp::GetProjectName())
+                + (Descriptor.Modules[I].Type == EHostType::Editor ? "Editor" : ""))
             {
                 auto& AdditionalDependencies = Descriptor.Modules[I].AdditionalDependencies;
                 if (!AdditionalDependencies.Contains(Element.Name.ToString()))
@@ -838,7 +839,7 @@ bool CppToolsUtil::UpdatePlugin(const TSharedPtr<IPlugin>& Plugin, const FPlugin
     }
 }
 
-bool CppToolsUtil::AppendPluginModules(FPluginDescriptor& Descriptor, const TArray<FModuleDescriptor>* Modules)
+bool CppToolsUtil::AppendPluginModules(FPluginDescriptor& Descriptor, TSharedPtr<IPlugin> Plugin, const TArray<FModuleDescriptor>* Modules)
 {
     if (Modules == nullptr) return false;
 
@@ -852,7 +853,8 @@ bool CppToolsUtil::AppendPluginModules(FPluginDescriptor& Descriptor, const TArr
                 bContains = true;
                 if (bUpdatedPrimary) break;
             }
-            if (!bUpdatedPrimary && Descriptor.Modules[I].Name == FApp::GetProjectName())
+            if (!bUpdatedPrimary && Descriptor.Modules[I].Name.ToString() == Plugin->GetName()
+                + (Descriptor.Modules[I].Type == EHostType::Editor ? "Editor" : ""))
             {
                 auto& AdditionalDependencies = Descriptor.Modules[I].AdditionalDependencies;
                 if (!AdditionalDependencies.Contains(Element.Name.ToString()))
