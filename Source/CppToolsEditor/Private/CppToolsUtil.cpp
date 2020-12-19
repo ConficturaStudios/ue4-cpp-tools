@@ -775,7 +775,7 @@ bool CppToolsUtil::AppendProjectModules(FProjectDescriptor& Descriptor, const TA
                 if (bUpdatedPrimary) break;
             }
             if (!bUpdatedPrimary && Descriptor.Modules[I].Name.ToString() == FString(FApp::GetProjectName())
-                + (Descriptor.Modules[I].Type == EHostType::Editor ? "Editor" : ""))
+                + (Element.Type == EHostType::Editor ? "Editor" : ""))
             {
                 auto& AdditionalDependencies = Descriptor.Modules[I].AdditionalDependencies;
                 if (!AdditionalDependencies.Contains(Element.Name.ToString()))
@@ -855,7 +855,7 @@ bool CppToolsUtil::AppendPluginModules(FPluginDescriptor& Descriptor, TSharedPtr
                 if (bUpdatedPrimary) break;
             }
             if (!bUpdatedPrimary && Descriptor.Modules[I].Name.ToString() == Plugin->GetName()
-                + (Descriptor.Modules[I].Type == EHostType::Editor ? "Editor" : ""))
+                + (Element.Type == EHostType::Editor ? "Editor" : ""))
             {
                 auto& AdditionalDependencies = Descriptor.Modules[I].AdditionalDependencies;
                 if (!AdditionalDependencies.Contains(Element.Name.ToString()))
