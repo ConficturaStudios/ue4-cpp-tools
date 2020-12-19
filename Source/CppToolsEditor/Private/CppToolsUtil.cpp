@@ -183,12 +183,12 @@ bool CppToolsUtil::InsertDependencyIntoPrimaryBuild(const FString& ModuleName, T
 {
     FString FileContents;
     
-    FString TargetName = Target == nullptr ? FApp::GetProjectName() : Target->GetName();
+    FString TargetName = !Target.IsValid() ? FApp::GetProjectName() : Target->GetName();
     if (bIsEditor)
     {
         TargetName += "Editor";
     }
-    const FString SourcePath = (Target == nullptr) ? FPaths::GameSourceDir() : Target->GetBaseDir() / "Source";
+    const FString SourcePath = (!Target.IsValid()) ? FPaths::GameSourceDir() : Target->GetBaseDir() / "Source";
     
     const FString TargetPath = SourcePath / TargetName / TargetName + ".Build.cs";
     
@@ -383,7 +383,7 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
 
     SlowTask.EnterProgressFrame();
 
-    if (Target != nullptr)
+    if (!Target.IsValid())
     {
         // Update .uproject file
         auto Modifier = FProjectDescriptorModifier::CreateLambda(
@@ -573,6 +573,8 @@ bool CppToolsUtil::UpdatePluginFile(const FString& PluginFile, const FPluginDesc
 
 bool CppToolsUtil::UpdatePlugin(const TSharedPtr<IPlugin>& Plugin, const FPluginDescriptorModifier* Modifier)
 {
+    if (!Plugin.IsValid()) return false;
+    
     const FString& PluginFilename = Plugin->GetDescriptorFileName();
     const FString& ShortFilename = FPaths::GetCleanFilename(PluginFilename);
 
