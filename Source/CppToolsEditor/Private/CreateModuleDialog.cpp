@@ -10,6 +10,7 @@ void SCreateModuleDialog::Construct(const FArguments& InArgs) {
     ModuleName = InArgs._ModuleName;
     ModuleTarget = InArgs._ModuleTarget;
     ModuleType = InArgs._ModuleType;
+    ModuleLoadingPhase = InArgs._ModuleLoadingPhase;
 
     const float EditableTextHeight = 26.0f;
 
@@ -21,6 +22,13 @@ void SCreateModuleDialog::Construct(const FArguments& InArgs) {
     }
     if (ModuleType == NULL) ModuleType = AvailableModuleTypes[0]; // Set default module type
 
+    // Create array of module type options
+    AvailableModuleLoadingPhases.Reserve(ELoadingPhase::Max);
+    for (int i = 0; i < ELoadingPhase::Type::Max; i++) {
+        AvailableModuleLoadingPhases.Emplace(MakeShareable(new ELoadingPhase::Type));
+        *AvailableModuleLoadingPhases[i] = static_cast<ELoadingPhase::Type>(i);
+    }
+    if (ModuleLoadingPhase == NULL) ModuleLoadingPhase = AvailableModuleLoadingPhases[6]; // Set default loading phase
 
     // Create array of module targets
     AvailableTargets.Add(MakeShareable(new FCreateModuleTarget));
@@ -243,6 +251,23 @@ void SCreateModuleDialog::Construct(const FArguments& InArgs) {
                                                 ]
                                             ]
 
+                                            // Module Loading Phase Combobox
+                                            + SHorizontalBox::Slot()
+                                            .AutoWidth()
+                                            .Padding(6.0f, 0.0f, 0.0f, 0.0f)
+                                            [
+                                                SAssignNew(ModuleLoadingPhasesCombo, SComboBox<TSharedPtr<ELoadingPhase::Type>>)
+                                                .ToolTipText(LOCTEXT("ModuleLPComboToolTip", "Choose the loading phase for your new module"))
+                                                .OptionsSource(&AvailableModuleLoadingPhases)
+                                                .InitiallySelectedItem(ModuleLoadingPhase)
+                                                .OnSelectionChanged(this, &SCreateModuleDialog::OnModuleLoadingPhaseChanged)
+                                                .OnGenerateWidget(this, &SCreateModuleDialog::MakeWidgetForModuleLoadingPhaseCombo)
+                                                [
+                                                    SNew(STextBlock)
+                                                    .Text(this, &SCreateModuleDialog::OnGetModuleLoadingPhaseComboText)
+                                                ]
+                                            ]
+
                                         ]
                                     ]
 
@@ -306,7 +331,8 @@ void SCreateModuleDialog::FinishClicked() {
     TArray<FString> CreatedFiles;
     FText OutFailReason;
 
-    GameProjectUtils::EAddCodeToProjectResult AddModuleResult = CppToolsUtil::GenerateModule(GetModulePath(), ModuleTarget->Plugin, ModuleName, *ModuleType, false, CreatedFiles, OutFailReason);
+    GameProjectUtils::EAddCodeToProjectResult AddModuleResult = CppToolsUtil::GenerateModule(GetModulePath(),
+        ModuleTarget->Plugin, ModuleName, *ModuleType, *ModuleLoadingPhase, false, CreatedFiles, OutFailReason);
     if (AddModuleResult == GameProjectUtils::EAddCodeToProjectResult::Succeeded) {
 
         OnCreateModule.ExecuteIfBound(ModuleName, *ModuleTarget, *ModuleType);
@@ -419,6 +445,10 @@ FText SCreateModuleDialog::OnGetModuleTypeComboText() const {
 }
 
 void SCreateModuleDialog::OnModuleTypeChanged(TSharedPtr<EHostType::Type> Value, ESelectInfo::Type SelectInfo) {
+    if (*Value != *ModuleType && *Value == EHostType::Editor)
+    {
+        OnModuleLoadingPhaseChanged(AvailableModuleLoadingPhases[8], ESelectInfo::Direct);
+    }
     ModuleType = Value;
 }
 
@@ -427,6 +457,22 @@ TSharedRef<SWidget> SCreateModuleDialog::MakeWidgetForModuleTypeCombo(TSharedPtr
         .Text(FText::FromString(EHostType::ToString(*Value)));
 }
 
+FText SCreateModuleDialog::OnGetModuleLoadingPhaseComboText() const
+{
+    return FText::FromString(ELoadingPhase::ToString(*ModuleLoadingPhase));
+}
+
+void SCreateModuleDialog::OnModuleLoadingPhaseChanged(TSharedPtr<ELoadingPhase::Type> Value,
+    ESelectInfo::Type SelectInfo)
+{
+    ModuleLoadingPhase = Value;
+}
+
+TSharedRef<SWidget> SCreateModuleDialog::MakeWidgetForModuleLoadingPhaseCombo(TSharedPtr<ELoadingPhase::Type> Value)
+{
+    return SNew(STextBlock)
+        .Text(FText::FromString(ELoadingPhase::ToString(*Value)));
+}
 
 
 FText SCreateModuleDialog::OnGetModulePathText() const {

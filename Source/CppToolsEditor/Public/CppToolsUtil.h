@@ -112,7 +112,8 @@ public:
     // --- Primary functionality ---
     
     static GameProjectUtils::EAddCodeToProjectResult GenerateModule(const FString& ModulePath, TSharedPtr<IPlugin> Target,
-        const FString& ModuleName, const EHostType::Type& Type, bool bUsePCH, TArray<FString>& CreatedFiles, FText& OutFailReason);
+        const FString& ModuleName, const EHostType::Type& Type, const ELoadingPhase::Type& LoadingPhase, bool bUsePCH,
+        TArray<FString>& CreatedFiles, FText& OutFailReason);
     
 private:
 

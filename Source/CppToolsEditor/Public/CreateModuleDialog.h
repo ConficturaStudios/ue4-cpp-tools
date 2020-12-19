@@ -44,6 +44,7 @@ public:
         : _ModuleName(TEXT("NewModule"))
         , _ModuleTarget(NULL)
         , _ModuleType(NULL)
+        , _ModuleLoadingPhase(NULL)
     {}
 
     /** The name of the new module to create. */
@@ -52,6 +53,8 @@ public:
     SLATE_ARGUMENT(TSharedPtr<FCreateModuleTarget>, ModuleTarget)
     /** The type of module to create. */
     SLATE_ARGUMENT(TSharedPtr<EHostType::Type>, ModuleType)
+    /** The loading phase of the module to create. */
+    SLATE_ARGUMENT(TSharedPtr<ELoadingPhase::Type>, ModuleLoadingPhase)
 
     /** Event called when module is added. */
     SLATE_EVENT(FOnCreateModule, OnCreateModule)
@@ -108,6 +111,15 @@ private:
     /** Create the widget to use as the combo box entry for the given module type */
     TSharedRef<SWidget> MakeWidgetForModuleTypeCombo(TSharedPtr<EHostType::Type> Value);
 
+
+    /** Get the combo box text for the currently selected module loading phase */
+    FText OnGetModuleLoadingPhaseComboText() const;
+    /** Called when the currently selected module loading phase is changed */
+    void OnModuleLoadingPhaseChanged(TSharedPtr<ELoadingPhase::Type> Value, ESelectInfo::Type SelectInfo);
+    /** Create the widget to use as the combo box entry for the given module loading phase */
+    TSharedRef<SWidget> MakeWidgetForModuleLoadingPhaseCombo(TSharedPtr<ELoadingPhase::Type> Value);
+
+    
     /** Returns the text in the module path box */
     FText OnGetModulePathText() const;
 
@@ -129,17 +141,21 @@ private:
     TSharedPtr<SEditableTextBox> ModuleNameEditBox;
     /** The combobox for selecting the module type. */
     TSharedPtr<SComboBox<TSharedPtr<EHostType::Type>>> ModuleTypesCombo;
+    /** The combobox for selecting the module loading phase. */
+    TSharedPtr<SComboBox<TSharedPtr<ELoadingPhase::Type>>> ModuleLoadingPhasesCombo;
     /** The combobox for selecting the module target. */
     TSharedPtr<SComboBox<TSharedPtr<FCreateModuleTarget>>> ModuleTargetsCombo;
 
 
     TArray<TSharedPtr<EHostType::Type>> AvailableModuleTypes;
+    TArray<TSharedPtr<ELoadingPhase::Type>> AvailableModuleLoadingPhases;
     TArray<TSharedPtr<FCreateModuleTarget>> AvailableTargets;
 
 
     FString ModuleName;
     TSharedPtr<FCreateModuleTarget> ModuleTarget;
     TSharedPtr<EHostType::Type> ModuleType;
+    TSharedPtr<ELoadingPhase::Type> ModuleLoadingPhase;
 
     /** Was the last input validity check successful? */
     bool bLastInputValidityCheckSuccessful;

@@ -490,7 +490,8 @@ bool CppToolsUtil::InsertDependencyIntoTarget(const FString& ModuleName, const b
 }
 
 GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FString& ModulePath, TSharedPtr<IPlugin> Target,
-    const FString& ModuleName, const EHostType::Type& Type, bool bUsePCH, TArray<FString>& CreatedFiles, FText& OutFailReason)
+    const FString& ModuleName, const EHostType::Type& Type, const ELoadingPhase::Type& LoadingPhase, bool bUsePCH,
+    TArray<FString>& CreatedFiles, FText& OutFailReason)
 {
 
     //TODO: Add data validation
@@ -512,7 +513,7 @@ GameProjectUtils::EAddCodeToProjectResult CppToolsUtil::GenerateModule(const FSt
         PublicDependencyModuleNames.Add(TEXT("InputCore"));
         TArray<FString> PrivateDependencyModuleNames;
         if (CppToolsUtil::GenerateModuleBuildFile(BuildFilename, ModuleName, PublicDependencyModuleNames, PrivateDependencyModuleNames, OutFailReason, bUsePCH)) {
-            GeneratedModules.Add(FModuleDescriptor(*ModuleName, Type));
+            GeneratedModules.Add(FModuleDescriptor(*ModuleName, Type, LoadingPhase));
             CreatedFiles.Add(BuildFilename);
         }
         else {
