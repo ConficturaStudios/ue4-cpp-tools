@@ -437,7 +437,7 @@ bool CppToolsUtil::InsertDependencyIntoTarget(const FString& ModuleName, const b
 
         // Check for existing ExtraModuleNames.AddRange command
         const FRegexPattern ExtraModulesPattern(
-            TEXT("ExtraModuleNames\\.AddRange\\([\\s]*new(?:\\s+string)?\\[\\s*\\][\\s]*\\{[\\s]*(.*)[\\s]*\\}[\\s]*\\);"));
+            TEXT("ExtraModuleNames\\.AddRange\\([\\s]*new(?:\\s+string)?\\[\\s*\\][\\s]*\\{[\\s]*((?:[^\\}]*\\S(?=\\s*\\}))|\\s*)[\\s]*\\}[\\s]*\\);"));
         FRegexMatcher ExtraModulesMatcher(ExtraModulesPattern, FileContents);
 
         if (ExtraModulesMatcher.FindNext())
@@ -448,8 +448,12 @@ bool CppToolsUtil::InsertDependencyIntoTarget(const FString& ModuleName, const b
             FileContents.RemoveAt(start, end - start);
             
             FString InsertionText = TEXT("ExtraModuleNames.AddRange( new string[] { MODULES } );");
-            InsertionText = InsertionText.Replace(TEXT("MODULES"),
-                *(ExtraModulesMatcher.GetCaptureGroup(1) + ", \"" + ModuleName + "\""), ESearchCase::CaseSensitive);
+            FString ModuleList = ExtraModulesMatcher.GetCaptureGroup(1).TrimEnd();
+            
+            if (ModuleList.IsEmpty()) ModuleList = "\"" + ModuleName + "\"";
+            else ModuleList += ", \"" + ModuleName + "\"";
+            
+            InsertionText = InsertionText.Replace(TEXT("MODULES"), *ModuleList, ESearchCase::CaseSensitive);
             
             FileContents.InsertAt(start, InsertionText);
 
