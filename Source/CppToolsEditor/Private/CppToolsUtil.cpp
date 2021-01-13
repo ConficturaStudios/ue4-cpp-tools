@@ -281,7 +281,7 @@ TArray<FString> CppToolsUtil::GetModuleDependencies(const FString& ModuleName, T
         if (bIncludePrivate) DependencySource += "|(?:PrivateDependencyModuleNames)";
         
         const FString AddRangePattern = DependencySource +
-            "\\.AddRange\\(\\s*new\\s+string\\[\\s*\\]\\s*\\{\\s*((?:[^\\}]*(?:\\r\\n|\\r|\\n)?)*)\\s*\\}\\s*\\);";
+            "\\.AddRange\\(\\s*new(?:\\s+string)?\\[\\s*\\]\\s*\\{\\s*((?:[^\\}]*(?:\\r\\n|\\r|\\n)?)*)\\s*\\}\\s*\\);";
         const FString AddPattern = DependencySource + "\\.Add\\(([^\\)]+)\\);";
         
         const FRegexPattern DependenciesPattern("(?:" + AddRangePattern + ")|(?:" + AddPattern + ")");
@@ -367,7 +367,7 @@ bool CppToolsUtil::InsertDependencyIntoModule(const FString& ModuleName, TShared
         FString DependencySource = "(?:PublicDependencyModuleNames)";
         
         const FString AddRangePattern = DependencySource +
-            "\\.AddRange\\(\\s*new\\s+string\\[\\s*\\]\\s*\\{\\s*((?:[^\\}]*(?:\\r\\n|\\r|\\n)?)*)\\s*\\}\\s*\\);";
+            "\\.AddRange\\(\\s*new(?:\\s+string)?\\[\\s*\\]\\s*\\{\\s*((?:[^\\}]*(?:\\r\\n|\\r|\\n)?)*)\\s*\\}\\s*\\);";
         const FString AddPattern = DependencySource + "\\.Add\\(([^\\)]+)\\);";
         
         const FRegexPattern DependenciesPattern("(?:" + AddRangePattern + ")|(?:" + AddPattern + ")");
@@ -437,7 +437,7 @@ bool CppToolsUtil::InsertDependencyIntoTarget(const FString& ModuleName, const b
 
         // Check for existing ExtraModuleNames.AddRange command
         const FRegexPattern ExtraModulesPattern(
-            TEXT("ExtraModuleNames\\.AddRange\\([\\s]*new string\\[\\][\\s]*\\{[\\s]*(.*)[\\s]*\\}[\\s]*\\);"));
+            TEXT("ExtraModuleNames\\.AddRange\\([\\s]*new(?:\\s+string)?\\[\\s*\\][\\s]*\\{[\\s]*(.*)[\\s]*\\}[\\s]*\\);"));
         FRegexMatcher ExtraModulesMatcher(ExtraModulesPattern, FileContents);
 
         if (ExtraModulesMatcher.FindNext())
